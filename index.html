@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>5-Man Wolf</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Wolf">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#2f5d3a">
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; margin: 0; background: #f2f5ef; color: #1d2b1f; }
+  header { background: #2f5d3a; color: white; padding: 14px 16px; padding-top: calc(14px + env(safe-area-inset-top)); text-align: center; }
+  header h1 { margin: 0; font-size: 21px; }
+  header div { font-size: 13px; opacity: 0.85; margin-top: 2px; }
+  main { max-width: 480px; margin: 0 auto; padding: 12px; padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+  .box { background: white; border-radius: 12px; padding: 14px; margin-bottom: 12px;
+         box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
+  h2 { font-size: 17px; margin: 0 0 10px; }
+  .muted { color: #5b6b5d; font-size: 14px; }
+  input { font-size: 17px; padding: 10px; border: 1px solid #c9d3c6; border-radius: 8px; box-sizing: border-box; }
+  .setup-row { display: flex; gap: 8px; margin-bottom: 8px; }
+  .setup-row .name { flex: 1; }
+  .setup-row .hcp { width: 74px; }
+  button { font-size: 16px; padding: 12px; border-radius: 10px; border: none; cursor: pointer;
+           background: #dfe9dc; color: #1d2b1f; width: 100%; margin-bottom: 8px; text-align: left; }
+  button.go { background: #2f5d3a; color: white; text-align: center; font-weight: 600; }
+  button.small { width: auto; font-size: 14px; padding: 8px 12px; background: #e9e2d6; text-align: center; }
+  button:active { filter: brightness(0.92); }
+  button.chip { width: auto; display: inline-block; font-size: 14px; padding: 8px 12px; margin: 0 6px 6px 0;
+                border-radius: 18px; background: white; border: 1px solid #c9d3c6; text-align: center; }
+  button.chip.on { background: #2f5d3a; color: white; border-color: #2f5d3a; }
+  button.chip.on .muted { color: #d5e4d1; }
+  .row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #eef1ec; }
+  .row:last-child { border-bottom: none; }
+  .plus { color: #1f7a35; font-weight: 700; } .minus { color: #b8321f; font-weight: 700; }
+  .carry { background: #fff3cd; color: #6b5200; padding: 8px 10px; border-radius: 8px; margin-bottom: 10px; font-size: 14px; }
+  .wolf { font-weight: 700; }
+  .score { display: flex; align-items: center; gap: 8px; }
+  .score button { width: 38px; height: 38px; border-radius: 50%; padding: 0; margin: 0; font-size: 20px; text-align: center; }
+  .score b { width: 26px; text-align: center; font-size: 20px; }
+  .dot { color: #b8321f; font-size: 12px; }
+  .verdict { background: #eaf2e7; border-radius: 8px; padding: 10px; margin: 10px 0; font-size: 15px; }
+  .review { border-bottom: 1px solid #eef1ec; padding: 4px 0; cursor: pointer; }
+  .review:last-child { border-bottom: none; }
+  .review .row { border-bottom: none; }
+  table.rev { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.rev th { text-align: left; font-weight: 600; color: #5b6b5d; font-size: 12px; padding: 4px 2px; }
+  table.rev td { padding: 4px 2px; border-top: 1px solid #f0f2ee; }
+  .trash { background: #f6f8f4; border-radius: 10px; padding: 10px; margin-bottom: 10px; }
+</style>
+</head>
+<body>
+<header><h1>🐺 5-Man Wolf</h1><div id="sub">River Oaks CC</div></header>
+<main id="app"></main>
+
+<script>
+// =====================================================
+//  THE COURSE — River Oaks Country Club, Houston
+//  Check these against your club scorecard and fix any that are off!
+// =====================================================
+const PAR      = [4, 4, 3, 5, 4, 3, 4, 5, 4,    5, 4, 4, 4, 3, 5, 4, 3, 4];
+const HOLE_HCP = [13, 7, 17, 1, 9, 15, 5, 3, 11,  4, 6, 12, 16, 18, 2, 8, 14, 10];
+
+// =====================================================
+//  THE BETS — change these numbers if your group changes
+// =====================================================
+// The dollar amounts are set on the setup screen and stored in "stakes".
+// Everything is based on what EACH player on the 3-man side wins or loses;
+// the 2-man side and Lone Wolf amounts are figured from it so the money always balances.
+let stakes = { hole: 2, trash: 1 };   // $2 hole bet, $1 trash (your usual game)
+function TWO_MAN_WIN()   { return stakes.hole * 1.5; }  // $2 -> $3
+function THREE_MAN_WIN() { return stakes.hole; }        // $2
+function LONE_WOLF()     { return stakes.hole * 4; }    // $2 -> $8
+function TRASH_TWO()     { return stakes.trash * 1.5; } // $1 -> $1.50
+function TRASH_THREE()   { return stakes.trash; }       // $1
+function TRASH_LONE()    { return stakes.trash; }       // $1 between Wolf and each player
+const MAX_PAID      = 3;  // ties carry over; one hole pays at most 3 holes' worth,
+                          // and any extra carried holes roll to the next hole
+const EQUITY_START  = 15; // from hole 15 on, the biggest loser gets first shot at Wolf
+// TEAM TRASH (sandies, gross birdies, greenies) — paid side vs side, per item:
+                           // greenies carry to the next par 3 if nobody gets one
+
+// =====================================================
+//  THE DATA
+// =====================================================
+let players = [];  // 5 names, in the order the balls landed
+let hcps = [];     // each player's handicap
+let holes = [];    // finished holes: { wolf, partner, scores, sandy, greenie }
+                   //   partner = player number, or -1 for Lone Wolf
+                   //   greenie = player number, -1 = nobody (carry), null = not a par 3
+let pickedWolf = null;
+let pickedPartner = null;
+let scores = [];   // gross scores being entered for the current hole
+let sandy = [];
+let greenie = null;
+
+try {
+  let saved = JSON.parse(localStorage.getItem("wolfGameHcp"));
+  if (saved) { players = saved.players; hcps = saved.hcps; holes = saved.holes; if (saved.stakes) stakes = saved.stakes; }
+} catch (e) {}
+
+function save() {
+  try { localStorage.setItem("wolfGameHcp", JSON.stringify({ players, hcps, holes, stakes })); } catch (e) {}
+}
+
+// =====================================================
+//  HANDICAP STROKES — everyone plays off the lowest handicap
+// =====================================================
+function strokesOn(player, holeIndex) {
+  let low = Math.min(...hcps);
+  let diff = hcps[player] - low;               // strokes this player gets for the round
+  let strokes = Math.floor(diff / 18);         // a stroke on every hole for each full 18
+  if (HOLE_HCP[holeIndex] <= diff % 18) strokes++;  // plus one on the hardest holes
+  return strokes;
+}
+
+function net(player, holeIndex, gross) {
+  return gross - strokesOn(player, holeIndex);
+}
+
+// Who won the hole? Best net ball for each side.
+function holeResult(h, holeIndex) {
+  let wolfSide = [], otherSide = [];
+  for (let p = 0; p < 5; p++) {
+    let n = net(p, holeIndex, h.scores[p]);
+    if (p === h.wolf || p === h.partner) wolfSide.push(n);
+    else otherSide.push(n);
+  }
+  let w = Math.min(...wolfSide), o = Math.min(...otherSide);
+  return { result: w < o ? "wolf" : w > o ? "others" : "tie", wolfBest: w, otherBest: o };
+}
+
+// =====================================================
+//  THE MONEY — add it all up from the list of holes
+// =====================================================
+function tally() {
+  let wolfMoney  = [0, 0, 0, 0, 0];
+  let trashMoney = [0, 0, 0, 0, 0];
+  let carry = 0;
+  let greenieCarry = 0;
+
+  // TEAM trash: whoever earns it, their whole side collects from the other side
+  let h;  // the hole being added up (set in the loop below)
+  function payTrash(earner, amount) {
+    let wolfSideEarned = (earner === h.wolf || earner === h.partner);
+    for (let p = 0; p < 5; p++) {
+      let onWolfSide = (p === h.wolf || p === h.partner);
+      let winner = (onWolfSide === wolfSideEarned);
+      let pay;
+      if (h.partner === -1) {
+        // Lone Wolf: $1 between him and each of the other four
+        pay = (p === h.wolf) ? TRASH_LONE() * 4 : TRASH_LONE();
+      } else {
+        // 2 vs 3: the 2-man side's share is $1.50 each, the 3-man side's is $1 each
+        pay = onWolfSide ? TRASH_TWO() : TRASH_THREE();
+      }
+      trashMoney[p] += (winner ? pay : -pay) * amount;
+    }
+  }
+
+  let log = [];  // details of each hole, for the "Holes played" review
+
+  holes.forEach((thisHole, i) => {
+    h = thisHole;
+    let wolfBefore = wolfMoney.slice(), trashBefore = trashMoney.slice();
+    let entry = { trashNotes: [] };
+    log.push(entry);
+    // ---- Trash ----
+    for (let p of h.sandy) { payTrash(p, 1); entry.trashNotes.push("Sandy: " + players[p]); }
+    for (let p = 0; p < 5; p++) {
+      if (h.scores[p] < PAR[i]) { payTrash(p, 1); entry.trashNotes.push("Birdie: " + players[p]); }   // gross birdie (or better)
+    }
+    if (h.greenie === -1) {
+      greenieCarry++;
+      entry.trashNotes.push("Greenie: nobody (carried)");
+    } else if (h.greenie !== null) {
+      payTrash(h.greenie, 1 + greenieCarry);
+      entry.trashNotes.push("Greenie: " + players[h.greenie] + (greenieCarry > 0 ? " (" + (greenieCarry + 1) + "×)" : ""));
+      greenieCarry = 0;
+    }
+    // remember each player's change on this hole (filled in after the Wolf bet)
+    entry.finish = () => {
+      entry.wolfDelta  = wolfMoney.map((m, p) => m - wolfBefore[p]);
+      entry.trashDelta = trashMoney.map((m, p) => m - trashBefore[p]);
+    };
+
+    // ---- The Wolf bet ----
+    let { result, wolfBest, otherBest } = holeResult(h, i);
+    entry.result = result; entry.wolfBest = wolfBest; entry.otherBest = otherBest;
+    if (result === "tie") { carry++; entry.times = 0; entry.finish(); return; }
+    let riding = carry + 1;
+    let times = Math.min(riding, MAX_PAID);
+    carry = riding - times;
+    entry.times = times;
+    let wolfWon = (result === "wolf");
+
+    for (let p = 0; p < 5; p++) {
+      let onWolfTeam = (p === h.wolf || p === h.partner);
+      if (h.partner === -1) {
+        if (p === h.wolf) wolfMoney[p] += (wolfWon ? LONE_WOLF() : -LONE_WOLF()) * times;
+        else              wolfMoney[p] += (wolfWon ? -LONE_WOLF() / 4 : LONE_WOLF() / 4) * times;
+      } else if (onWolfTeam) {
+        wolfMoney[p] += (wolfWon ? TWO_MAN_WIN() : -TWO_MAN_WIN()) * times;
+      } else {
+        wolfMoney[p] += (wolfWon ? -THREE_MAN_WIN() : THREE_MAN_WIN()) * times;
+      }
+    }
+    entry.finish();
+  });
+
+  let money = wolfMoney.map((w, p) => w + trashMoney[p]);
+  return { money, wolfMoney, trashMoney, carry, greenieCarry, log };
+}
+
+function rotationWolf(holeNumber) { return (holeNumber - 1) % 5; }
+
+function teeOrder(wolf) {
+  let order = [];
+  for (let i = 0; i < 5; i++) order.push((wolf + i) % 5);
+  return order;
+}
+
+// Show money as $3 or $1.50
+function fmt(x) { return Number.isInteger(x) ? String(x) : x.toFixed(2); }
+
+function dollars(x) {
+  if (x > 0) return '<span class="plus">+$' + fmt(x) + '</span>';
+  if (x < 0) return '<span class="minus">−$' + fmt(-x) + '</span>';
+  return '<span class="muted">$0</span>';
+}
+
+// =====================================================
+//  DRAWING THE SCREEN
+// =====================================================
+function draw() {
+  drawMain();
+  if (players.length > 0 && holes.length > 0) {
+    document.getElementById("app").insertAdjacentHTML("beforeend", historyHTML());
+  }
+}
+
+// =====================================================
+//  HOLES PLAYED — tap a hole to see the details
+// =====================================================
+let openHoles = [];  // which holes are expanded, so they stay open when the screen redraws
+
+function toggleReview(i) {
+  if (openHoles.includes(i)) openHoles.splice(openHoles.indexOf(i), 1);
+  else openHoles.push(i);
+  draw();
+}
+
+function historyHTML() {
+  let { log } = tally();
+  let html = '<div class="box"><h2>Holes played</h2>';
+  for (let i = holes.length - 1; i >= 0; i--) {   // newest first
+    let h = holes[i], e = log[i];
+    let side = h.partner === -1 ? players[h.wolf] + ' (Lone Wolf)' : players[h.wolf] + ' & ' + players[h.partner];
+    let outcome = e.result === "wolf" ? "Wolf side won" : e.result === "others" ? "Other side won" : "Tie — carried";
+    if (e.times > 1) outcome += ' (' + e.times + '×)';
+    let open = openHoles.includes(i);
+
+    html += '<div class="review" onclick="toggleReview(' + i + ')">' +
+            '<div class="row"><span><b>Hole ' + (i + 1) + '</b> <span class="muted">· par ' + PAR[i] + '</span><br>' +
+            '<span class="muted" style="font-size:13px">🐺 ' + side + ' — ' + outcome + '</span></span>' +
+            '<span class="muted">' + (open ? '▲' : '▼') + '</span></div>';
+
+    if (open) {
+      html += '<div class="muted" style="font-size:13px;margin:4px 0">Best net: Wolf side ' + e.wolfBest + ' vs others ' + e.otherBest + '</div>';
+      html += '<table class="rev"><tr><th></th><th>Gross</th><th>Net</th><th>Wolf</th><th>Trash</th></tr>';
+      for (let p of teeOrder(h.wolf)) {
+        let onWolf = (p === h.wolf || p === h.partner);
+        html += '<tr><td>' + (onWolf ? '🐺 ' : '') + players[p] + '</td><td>' + h.scores[p] + '</td><td>' + net(p, i, h.scores[p]) +
+                '</td><td>' + dollars(e.wolfDelta[p]) + '</td><td>' + dollars(e.trashDelta[p]) + '</td></tr>';
+      }
+      html += '</table>';
+      if (e.trashNotes.length) html += '<div class="muted" style="font-size:13px;margin-top:6px">🗑️ ' + e.trashNotes.join(' · ') + '</div>';
+    }
+    html += '</div>';
+  }
+  return html + '</div>';
+}
+
+function drawMain() {
+  let app = document.getElementById("app");
+
+  // ---- Setup step 1: names and handicaps (remembered from last time) ----
+  if (players.length === 0 && roster === null) {
+    let last = { names: ["", "", "", "", ""], hcps: ["", "", "", "", ""] };
+    try { last = JSON.parse(localStorage.getItem("wolfRoster")) || last; } catch (e) {}
+    let html = '<div class="box"><h2>Who\'s playing?</h2>' +
+      '<p class="muted">Names and handicaps, in any order.</p>';
+    for (let n = 1; n <= 5; n++) {
+      html += '<div class="setup-row"><input class="name" id="p' + n + '" placeholder="Player ' + n + '" value="' + last.names[n-1] + '">' +
+              '<input class="hcp" id="h' + n + '" type="number" inputmode="numeric" placeholder="Hcp" value="' + last.hcps[n-1] + '"></div>';
+    }
+    let st = last.stakes || stakes;
+    html += '<h2 style="margin-top:16px">Stakes</h2>' +
+      '<div class="setup-row" style="align-items:center"><span class="name">Hole bet — each on 3-man side $</span>' +
+      '<input class="hcp" id="sHole" type="number" inputmode="decimal" step="0.5" value="' + st.hole + '" oninput="stakePreview()"></div>' +
+      '<div class="setup-row" style="align-items:center"><span class="name">Trash — each on 3-man side $</span>' +
+      '<input class="hcp" id="sTrash" type="number" inputmode="decimal" step="0.5" value="' + st.trash + '" oninput="stakePreview()"></div>' +
+      '<p class="muted" id="stakeText"></p>';
+    html += '<button class="go" onclick="toOrder()">Next: tee order</button></div>';
+    app.innerHTML = html;
+    stakePreview();
+    return;
+  }
+
+  // ---- Setup step 2: tap players in the order the balls landed ----
+  if (players.length === 0) {
+    let html = '<div class="box"><h2>Tee order</h2>' +
+      '<p class="muted">Toss the balls, then tap each player in the order they landed. ' +
+      '1st tees off first and is Wolf on hole 1.</p>';
+    for (let k = 0; k < 5; k++) {
+      let pos = tossOrder.indexOf(k);
+      html += '<button class="' + (pos >= 0 ? 'chip on' : 'chip') + '" style="display:block;width:100%;text-align:left" onclick="tapOrder(' + k + ')">' +
+              (pos >= 0 ? '<b>' + (pos + 1) + ['st','nd','rd','th','th'][pos] + '</b> — ' : '') +
+              roster.names[k] + ' <span class="muted">(' + roster.hcps[k] + ')</span></button>';
+    }
+    if (tossOrder.length === 5) html += '<button class="go" onclick="startGame()">Start round</button>';
+    html += '<button class="small" onclick="tossOrder = []; draw()">Clear order</button> ' +
+            '<button class="small" onclick="roster = null; tossOrder = []; draw()">Back to names</button></div>';
+    app.innerHTML = html;
+    return;
+  }
+
+  document.getElementById("sub").textContent = "River Oaks CC · $" + fmt(TWO_MAN_WIN()) + "/$" + fmt(THREE_MAN_WIN()) +
+    " · Lone $" + fmt(LONE_WOLF()) + " · Trash $" + fmt(TRASH_TWO()) + "/$" + fmt(TRASH_THREE());
+  let { money, wolfMoney, trashMoney, carry, greenieCarry } = tally();
+  let holeNum = holes.length + 1;
+  let i = holeNum - 1;  // hole index for the course arrays
+  let html = "";
+
+  // ---- Standings ----
+  html += '<div class="box"><h2>Standings</h2>';
+  let ranked = [0,1,2,3,4].sort((a, b) => money[b] - money[a]);
+  for (let p of ranked) {
+    html += '<div class="row"><span>' + players[p] + ' <span class="muted">(' + hcps[p] + ')</span>' +
+            '<br><span class="muted" style="font-size:12px">Wolf ' + fmt(wolfMoney[p]) + ' · Trash ' + fmt(trashMoney[p]) + '</span></span>' +
+            dollars(money[p]) + '</div>';
+  }
+  html += '</div>';
+
+  if (holeNum > 18) {
+    html += '<div class="box"><h2>Round complete 🏁</h2>';
+    if (carry > 0) html += '<p class="muted">' + carry + ' tied hole(s) were still carrying at the end.</p>';
+    html += '<button class="small" onclick="undo()">Undo last hole</button> ' +
+            '<button class="small" onclick="newGame()">New round</button></div>';
+    app.innerHTML = html;
+    return;
+  }
+
+  html += '<div class="box"><h2>Hole ' + holeNum + ' <span class="muted">· Par ' + PAR[i] + ' · Hcp ' + HOLE_HCP[i] + '</span></h2>';
+  if (carry > 0) {
+    let pays = Math.min(carry + 1, MAX_PAID);
+    let extra = carry + 1 - pays;
+    html += '<div class="carry">💰 ' + carry + ' hole(s) carrying — this hole pays ' + pays + '×' +
+            (extra > 0 ? ' (' + extra + ' more roll to the next hole)' : '') + '</div>';
+  }
+
+  // ---- Step A: who is Wolf? ----
+  if (pickedWolf === null) {
+    if (holeNum < EQUITY_START) {
+      pickedWolf = rotationWolf(holeNum);
+    } else {
+      let rot = teeOrder(rotationWolf(holeNum));
+      let losers = [0,1,2,3,4].sort((a, b) => money[a] - money[b] || rot.indexOf(a) - rot.indexOf(b));
+      html += '<p class="muted">Biggest loser gets first choice. Tap who takes the Wolf:</p>';
+      for (let p of losers) html += '<button onclick="chooseWolf(' + p + ')">' + players[p] + ' &nbsp;' + dollars(money[p]) + '</button>';
+      html += '<button class="small" onclick="chooseWolf(' + rotationWolf(holeNum) + ')">Everyone passed — use rotation (' + players[rotationWolf(holeNum)] + ')</button>';
+      html += undoButton() + '</div>';
+      app.innerHTML = html;
+      return;
+    }
+  }
+
+  let order = teeOrder(pickedWolf);
+  html += '<p>🐺 <span class="wolf">' + players[pickedWolf] + '</span> is the Wolf</p>';
+  html += '<p class="muted">Tee order: ' + order.map(p => players[p]).join(" → ") + '</p>';
+
+  // ---- Step B: partner ----
+  if (pickedPartner === null) {
+    html += '<p class="muted">Who does the Wolf take?</p>';
+    for (let p of order.slice(1)) html += '<button onclick="choosePartner(' + p + ')">' + players[p] + '</button>';
+    html += '<button onclick="choosePartner(-1)">🐺 Lone Wolf</button>';
+    html += undoButton() + '</div>';
+    app.innerHTML = html;
+    return;
+  }
+
+  // ---- Step C: enter gross scores ----
+  let wolfSideNames = pickedPartner === -1 ? players[pickedWolf] + " (alone)" : players[pickedWolf] + " & " + players[pickedPartner];
+  html += '<p>Wolf side: <b>' + wolfSideNames + '</b></p>';
+  html += '<p class="muted">Gross scores <span class="dot">●</span> = gets a stroke here</p>';
+  for (let p of order) {
+    let s = strokesOn(p, i);
+    let onWolf = (p === pickedWolf || p === pickedPartner);
+    html += '<div class="row"><span>' + (onWolf ? '🐺 ' : '') + players[p] + ' ' +
+            '<span class="dot">' + '●'.repeat(s) + '</span>' +
+            '<br><span class="muted" style="font-size:12px">net ' + net(p, i, scores[p]) +
+            (scores[p] < PAR[i] ? ' · 🐦 birdie!' : '') + '</span></span>' +
+            '<span class="score"><button onclick="bump(' + p + ',-1)">−</button><b>' + scores[p] +
+            '</b><button onclick="bump(' + p + ',1)">+</button></span></div>';
+  }
+
+  // Live result
+  let preview = holeResult({ wolf: pickedWolf, partner: pickedPartner, scores: scores }, i);
+  let verdict = preview.result === "wolf" ? "Wolf side wins" : preview.result === "others" ? "Other side wins" : "Tie — carries over";
+  html += '<div class="verdict">Best net: Wolf side <b>' + preview.wolfBest + '</b> vs others <b>' + preview.otherBest +
+          '</b> → <b>' + verdict + '</b></div>';
+
+  // ---- Trash: sandies and greenies (birdies are automatic) ----
+  html += '<div class="trash"><b>🗑️ Trash</b>';
+  html += '<p class="muted" style="margin:8px 0 4px">Sandies:</p>';
+  for (let p = 0; p < 5; p++) {
+    let on = sandy.includes(p);
+    html += '<button class="chip' + (on ? ' on' : '') + '" onclick="toggleSandy(' + p + ')">' + (on ? '✓ ' : '') + players[p] + '</button>';
+  }
+  if (PAR[i] === 3) {
+    html += '<p class="muted" style="margin:8px 0 4px">Greenie' +
+            (greenieCarry > 0 ? ' (worth ' + (greenieCarry + 1) + '× — ' + greenieCarry + ' carried)' : '') + ':</p>';
+    for (let p = 0; p < 5; p++) {
+      html += '<button class="chip' + (greenie === p ? ' on' : '') + '" onclick="setGreenie(' + p + ')">' + players[p] + '</button>';
+    }
+    html += '<button class="chip' + (greenie === -1 ? ' on' : '') + '" onclick="setGreenie(-1)">Nobody — carry</button>';
+  }
+  html += '</div>';
+
+  html += '<button class="go" onclick="finishHole()">Save hole ' + holeNum + '</button>';
+  html += '<button class="small" onclick="pickedPartner = null; draw()">Change partner</button> ' + undoButton() + '</div>';
+
+  app.innerHTML = html;
+}
+
+function undoButton() {
+  return holes.length > 0 ? '<button class="small" onclick="undo()">Undo last hole</button>' : '';
+}
+
+// =====================================================
+//  BUTTON ACTIONS
+// =====================================================
+function resetHole() {
+  let i = holes.length;
+  pickedWolf = null; pickedPartner = null;
+  scores = [0,1,2,3,4].map(() => PAR[Math.min(i, 17)]);   // start everyone at par
+  sandy = [];
+  greenie = PAR[Math.min(i, 17)] === 3 ? -1 : null;
+}
+
+let roster = null;    // names + handicaps typed in step 1
+let tossOrder = [];   // roster positions, in the order the balls landed
+
+// Read the stakes boxes on the setup screen
+function readStakes() {
+  return {
+    hole:  parseFloat(document.getElementById("sHole").value)  || 0,
+    trash: parseFloat(document.getElementById("sTrash").value) || 0
+  };
+}
+
+// Show what the other amounts work out to, as you type
+function stakePreview() {
+  stakes = readStakes();
+  document.getElementById("stakeText").innerHTML =
+    'Hole: 3-man side $' + fmt(THREE_MAN_WIN()) + ' each · 2-man side $' + fmt(TWO_MAN_WIN()) +
+    ' each · Lone Wolf $' + fmt(LONE_WOLF()) + '<br>Trash: 3-man side $' + fmt(TRASH_THREE()) +
+    ' · 2-man side $' + fmt(TRASH_TWO()) + ' · Lone Wolf $' + fmt(TRASH_LONE()) + ' per player';
+}
+
+function toOrder() {
+  stakes = readStakes();
+  roster = {
+    names: [1,2,3,4,5].map(n => document.getElementById("p" + n).value.trim() || ("Player " + n)),
+    hcps:  [1,2,3,4,5].map(n => parseInt(document.getElementById("h" + n).value) || 0)
+  };
+  try { localStorage.setItem("wolfRoster", JSON.stringify({ names: roster.names, hcps: roster.hcps, stakes: stakes })); } catch (e) {}
+  tossOrder = [];
+  draw();
+}
+
+function tapOrder(k) {
+  if (tossOrder.includes(k)) tossOrder.splice(tossOrder.indexOf(k), 1);  // tap again to undo
+  else tossOrder.push(k);
+  draw();
+}
+
+function startGame() {
+  players = tossOrder.map(k => roster.names[k]);
+  hcps    = tossOrder.map(k => roster.hcps[k]);
+  holes = [];
+  resetHole(); save(); draw();
+}
+
+function chooseWolf(p)    { pickedWolf = p; draw(); }
+function choosePartner(p) { pickedPartner = p; draw(); }
+
+function bump(p, amount) {
+  scores[p] = Math.max(1, scores[p] + amount);
+  draw();
+}
+
+function toggleSandy(p) {
+  if (sandy.includes(p)) sandy.splice(sandy.indexOf(p), 1);
+  else sandy.push(p);
+  draw();
+}
+
+function setGreenie(value) { greenie = value; draw(); }
+
+function finishHole() {
+  holes.push({ wolf: pickedWolf, partner: pickedPartner, scores: scores.slice(), sandy: sandy.slice(), greenie: greenie });
+  resetHole(); save(); draw();
+}
+
+function undo() {
+  holes.pop();
+  openHoles = [];
+  resetHole(); save(); draw();
+}
+
+function newGame() {
+  players = []; hcps = []; holes = []; roster = null; tossOrder = []; openHoles = [];
+  resetHole(); save(); draw();
+}
+
+resetHole();
+draw();
+
+// Let the app work with no signal on the course
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
+</script>
+</body>
+</html>
